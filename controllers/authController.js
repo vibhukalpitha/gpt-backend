@@ -53,7 +53,7 @@ export const forgotPassword = async (req, res) => {
         // Generate Reset Token
         const resetToken = crypto.randomBytes(32).toString("hex");
         user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
+        user.resetPasswordExpire = Date.now() + 7200000; // 1 hour expiration
         await user.save();
 
         // Configure Email Transport
@@ -85,12 +85,16 @@ export const resetPassword = async (req, res) => {
     const { password } = req.body;
 
     try {
+        console.log("Token received:", token); // Debugging: Log the token
         const user = await User.findOne({
             resetPasswordToken: token,
-            resetPasswordExpires: { $gt: Date.now() } // Check if token is still valid
+            resetPasswordExpire: { $gt: Date.now() } // Check if token is still valid
         });
 
-        if (!user) return res.status(400).json({ msg: "Invalid or expired token" });
+        if (!user) {
+            console.log("User not found or token expired"); // Debugging: Log the issue
+            return res.status(400).json({ msg: "Invalid or expired token" });
+        }
 
         // Hash new password
         const salt = await bcrypt.genSalt(10);
@@ -98,12 +102,13 @@ export const resetPassword = async (req, res) => {
         
         // Clear reset fields
         user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
+        user.resetPasswordExpire = undefined;
         await user.save();
 
         res.json({ msg: "Password successfully reset" });
 
     } catch (err) {
+        console.log(err);
         res.status(500).json({ msg: "Server Error" });
     }
 };
