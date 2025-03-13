@@ -1,5 +1,5 @@
 import express from "express";
-import { registerUser, loginUser } from "../controllers/authController.js";
+import { registerUser, loginUser, verifyEmail } from "../controllers/authController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { forgotPassword, resetPassword } from "../controllers/authController.js";
 
@@ -12,5 +12,6 @@ router.get("/profile", authMiddleware, (req, res) => {
 });
 router.post("/forgot-password", forgotPassword);  // Request password reset
 router.post("/reset-password/:token", resetPassword);  // Reset password
+router.get("/verify-email/:token", verifyEmail);  // Verify email
 
 export default router;
