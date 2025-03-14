@@ -4,6 +4,8 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 
+export const blacklistedTokens = new Set();
+
 export const registerUser = async (req, res) => {
     const { name, email, password, role } = req.body;
 
@@ -66,6 +68,24 @@ export const loginUser = async (req, res) => {
         console.log(err);
         res.status(500).json({ msg: "Server Error" });
     }
+};
+
+export const logoutUser = (req, res) => {
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+        console.log("Logout failed: No token provided");
+        return res.status(400).json({ message: "No token provided" });
+    }
+
+    if (blacklistedTokens.has(token)) {
+        return res.status(401).json({ msg: "You are already logged out. Please log in." });
+    }
+
+    blacklistedTokens.add(token);
+    console.log("Token blacklisted:", token);
+
+    res.status(200).json({ message: "Logged out successfully" });
 };
 
 export const forgotPassword = async (req, res) => {

@@ -4,6 +4,7 @@ import { connect } from "mongoose";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import router from "./routes/authRoutes.js";
+import userRouter from "./routes/userRoutes.js";
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", router);
+app.use("/api/users", userRouter);
 
 // Start the server
 const PORT = process.env.PORT || 5000;
