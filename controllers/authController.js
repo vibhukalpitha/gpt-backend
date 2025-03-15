@@ -3,9 +3,33 @@ import  bcrypt  from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import exp from "constants";
 
 export const blacklistedTokens = new Set();
 
+// Function to generate a random 6-digit code
+export const generateVerificationCode = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Function to send the verification code via email
+export const sendVerificationCode = async (email, code) => {
+    const transporter = nodemailer.createTransport({
+        service: "Gmail",
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+
+    const mailOptions = {
+        to: email,
+        from: process.env.EMAIL_USER,
+        subject: "Your 2-Step Verification Code",
+        text: `Your verification code is: ${code}. This code will expire in 10 minutes.`,
+    };
+
+    await transporter.sendMail(mailOptions);
+};
+
+// register user into system
 export const registerUser = async (req, res) => {
     const { name, email, password, role } = req.body;
 
@@ -29,7 +53,7 @@ export const registerUser = async (req, res) => {
         });
 
         // Send verification email
-        const verificationURL = `http://localhost:3000/api/auth/verify-email/${verificationToken}`;
+        const verificationURL = `http://172.20.10.6:3000/api/auth/verify-email/${verificationToken}`; 
         const mailOptions = {
             to: user.email,
             from: process.env.EMAIL_USER,
@@ -46,6 +70,7 @@ export const registerUser = async (req, res) => {
     }
 };
 
+// user login into system
 export const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
@@ -61,15 +86,23 @@ export const loginUser = async (req, res) => {
             return res.status(400).json({ msg: "Please verify your email before logging in." });
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+        // Generate a 2-step verification code
+        const verificationCode = generateVerificationCode();
+        user.twoStepVerificationCode = verificationCode;
+        user.twoStepVerificationExpire = Date.now() + 600000; // 10 minutes expiry
+        await user.save();
 
-        res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+        // Send the verification code to the user's email
+        await sendVerificationCode(user.email, verificationCode);
+
+        res.json({ msg: "Verification code sent to your email", userId: user._id });
     } catch (err) {
         console.log(err);
         res.status(500).json({ msg: "Server Error" });
     }
 };
 
+// user logout from system
 export const logoutUser = (req, res) => {
     const token = req.headers.authorization?.split(" ")[1];
 
@@ -88,6 +121,7 @@ export const logoutUser = (req, res) => {
     res.status(200).json({ message: "Logged out successfully" });
 };
 
+// forgot password function
 export const forgotPassword = async (req, res) => {
     const { email } = req.body;
 
@@ -125,6 +159,7 @@ export const forgotPassword = async (req, res) => {
     }
 };
 
+// reset password function
 export const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
@@ -158,6 +193,7 @@ export const resetPassword = async (req, res) => {
     }
 };
 
+// verify email function
 export const verifyEmail = async (req, res) => {
     const { token } = req.params;
 
@@ -176,5 +212,116 @@ export const verifyEmail = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(500).json({ msg: "Server Error" });
+    }
+};
+
+// verify two step code function
+export const verifyTwoStepCode = async (req, res) => {
+    const { userId, code } = req.body;
+
+    try {
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+
+        // Check if the code matches and is not expired
+        if (
+            user.twoStepVerificationCode === code &&
+            user.twoStepVerificationExpire > Date.now()
+        ) {
+            // Clear the verification code
+            user.twoStepVerificationCode = undefined;
+            user.twoStepVerificationExpire = undefined;
+            await user.save();
+
+            // Generate a JWT token for the user
+            const token = jwt.sign(
+                { id: user._id, role: user.role },
+                process.env.JWT_SECRET,
+                { expiresIn: "1d" }
+            );
+            res.json({ msg: "Logged Successfully", userId: user._id });
+            res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+        } else {
+            res.status(400).json({ msg: "Invalid or expired verification code" });
+        }
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: "Server Error" });
+    }
+};
+
+// get all users
+export const getUsers = async (req, res) => {
+    try {
+        const users = await User.find({});
+        res.status(200).json({ count: users.length, data: users });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// get user by id
+export const getUserById = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const user = await User.findById(id);
+        res.status(200).json(user);
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// update user details
+export const updateUserDetails = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        if (
+            !req.body.name ||
+            !req.body.email ||
+            !req.body.password ||
+            !req.body.role
+        ) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
+
+        const result = await User.findByIdAndUpdate(id, req.body);
+
+        if (!result) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({ message: "User updated successfully" });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// delete user
+export const deleteUser = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await User.findByIdAndDelete(id);
+
+        if (!result) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({ message: "User deleted successfully" });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: err.message });
     }
 };
